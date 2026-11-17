@@ -1,0 +1,185 @@
+
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>BattleZone India</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101820;color:white;font-family:Arial,sans-serif;overflow:hidden;touch-action:none}
+#top{height:54px;display:flex;align-items:center;justify-content:space-around;background:#182936;font-weight:bold;font-size:13px}
+canvas{display:block;width:100vw;height:calc(100dvh - 54px);background:#52794a}
+#help{position:fixed;left:8px;bottom:8px;background:#101820cc;padding:7px 9px;border-radius:8px;font-size:11px;pointer-events:none}
+#pad{position:fixed;right:18px;bottom:22px;width:116px;height:116px;border:2px solid #ffffff99;border-radius:50%;background:#ffffff22;display:grid;place-items:center}
+#stick{width:46px;height:46px;border-radius:50%;background:#ffffffbb}
+#fire{position:fixed;right:154px;bottom:42px;width:70px;height:70px;border:0;border-radius:50%;background:#e34b36;color:white;font-weight:bold}
+#overlay{position:fixed;inset:54px 0 0;background:#000b;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px}
+#panel{background:#182936;padding:24px;border-radius:16px;max-width:340px}
+#start{padding:12px 24px;border:0;border-radius:9px;background:#f0b429;font-weight:bold}
+</style>
+</head>
+<body>
+<div id="top">
+<span>🇮🇳 BATTLEZONE INDIA</span>
+<span id="hp">HEALTH: 100</span>
+<span id="score">KILLS: 0</span>
+<span id="ammo">AMMO: 30</span>
+</div>
+<canvas id="game"></canvas>
+<div id="help">PC: WASD / Arrow keys • Space/Click: Fire • R: Reload<br>Mobile: Joystick से चलें • FIRE से गोली चलाएँ</div>
+<div id="pad"><div id="stick"></div></div>
+<button id="fire">FIRE</button>
+<div id="overlay">
+<div id="panel">
+<h2>BattleZone India</h2>
+<p>दुश्मनों से बचें और उन्हें शूट करें।</p>
+<button id="start">START GAME</button>
+</div>
+</div>
+<script>
+(()=>{
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const hpEl=document.getElementById('hp'),scoreEl=document.getElementById('score'),ammoEl=document.getElementById('ammo');
+const overlay=document.getElementById('overlay'),startBtn=document.getElementById('start');
+let W=0,H=0,player,enemies=[],bullets=[],keys={},running=false,score=0,ammo=30,health=100,lastShot=0,spawn=0,last=0;
+let joy={x:0,y:0},joyActive=false;
+
+function resize(){
+const d=Math.min(devicePixelRatio||1,2);
+W=canvas.clientWidth;H=canvas.clientHeight;
+canvas.width=W*d;canvas.height=H*d;
+ctx.setTransform(d,0,0,d,0,0);
+}
+addEventListener('resize',resize);resize();
+
+function reset(){
+player={x:W/2,y:H/2,r:13,speed:3.2,angle:0};
+enemies=[];bullets=[];score=0;ammo=30;health=100;spawn=0;updateHud();
+}
+function updateHud(){
+hpEl.textContent='HEALTH: '+Math.max(0,Math.ceil(health));
+scoreEl.textContent='KILLS: '+score;
+ammoEl.textContent='AMMO: '+ammo;
+}
+function spawnEnemy(){
+let side=Math.floor(Math.random()*4);
+let x=side===0?0:side===1?W:Math.random()*W;
+let y=side===2?0:side===3?H:Math.random()*H;
+enemies.push({x,y,r:12,hp:2,speed:.75+Math.random()*.45});
+}
+function shoot(){
+if(!running||ammo<=0)return;
+let now=performance.now();
+if(now-lastShot<240)return;
+lastShot=now;ammo--;
+bullets.push({
+x:player.x+Math.cos(player.angle)*18,
+y:player.y+Math.sin(player.angle)*18,
+vx:Math.cos(player.angle)*7,
+vy:Math.sin(player.angle)*7,life:55
+});
+updateHud();
+}
+function endGame(){
+running=false;overlay.style.display='flex';
+document.querySelector('#panel h2').textContent='GAME OVER';
+document.querySelector('#panel p').textContent='आपके कुल Kills: '+score+'. फिर खेलने के लिए Restart दबाएँ।';
+startBtn.textContent='RESTART';
+}
+startBtn.onclick=()=>{
+reset();running=true;overlay.style.display='none';
+last=performance.now();requestAnimationFrame(loop);
+};
+
+addEventListener('keydown',e=>{
+keys[e.key.toLowerCase()]=true;
+if(e.key===' '){e.preventDefault();shoot();}
+if(e.key.toLowerCase()==='r'){ammo=30;updateHud();}
+});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+canvas.addEventListener('pointerdown',e=>{if(e.clientX>W*.48)shoot();});
+document.getElementById('fire').addEventListener('pointerdown',e=>{e.preventDefault();shoot();});
+
+const pad=document.getElementById('pad'),stick=document.getElementById('stick');
+function joyMove(e){
+const r=pad.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+let dx=e.clientX-cx,dy=e.clientY-cy,m=Math.hypot(dx,dy),max=42;
+if(m>max){dx=dx/m*max;dy=dy/m*max;}
+joy.x=dx/max;joy.y=dy/max;
+stick.style.transform=`translate(${dx}px,${dy}px)`;
+}
+pad.addEventListener('pointerdown',e=>{joyActive=true;pad.setPointerCapture(e.pointerId);joyMove(e);});
+pad.addEventListener('pointermove',e=>{if(joyActive)joyMove(e);});
+function joyEnd(){joyActive=false;joy.x=joy.y=0;stick.style.transform='translate(0,0)';}
+pad.addEventListener('pointerup',joyEnd);
+pad.addEventListener('pointercancel',joyEnd);
+
+function loop(t){
+if(!running)return;
+let dt=Math.min((t-last)/16.67,2);last=t;
+let mx=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0)+joy.x;
+let my=(keys.s||keys.arrowdown?1:0)-(keys.w||keys.arrowup?1:0)+joy.y;
+let mag=Math.hypot(mx,my);
+if(mag>1){mx/=mag;my/=mag;}
+player.x=Math.max(14,Math.min(W-14,player.x+mx*player.speed*dt));
+player.y=Math.max(14,Math.min(H-14,player.y+my*player.speed*dt));
+if(Math.abs(mx)+Math.abs(my)>.1)player.angle=Math.atan2(my,mx);
+
+spawn+=dt;
+if(spawn>75&&enemies.length<12){spawn=0;spawnEnemy();}
+
+bullets.forEach(b=>{b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;});
+enemies.forEach(en=>{
+let dx=player.x-en.x,dy=player.y-en.y,d=Math.hypot(dx,dy)||1;
+en.x+=dx/d*en.speed*dt;en.y+=dy/d*en.speed*dt;
+if(d<en.r+player.r)health-=.22*dt;
+});
+
+for(let i=enemies.length-1;i>=0;i--){
+let en=enemies[i];
+for(let j=bullets.length-1;j>=0;j--){
+let b=bullets[j];
+if(Math.hypot(en.x-b.x,en.y-b.y)<en.r+4){
+en.hp--;bullets.splice(j,1);
+if(en.hp<=0){enemies.splice(i,1);score++;updateHud();}
+break;
+}
+}
+}
+bullets=bullets.filter(b=>b.life>0&&b.x>-10&&b.x<W+10&&b.y>-10&&b.y<H+10);
+draw();updateHud();
+if(health<=0){endGame();return;}
+requestAnimationFrame(loop);
+}
+
+function draw(){
+ctx.clearRect(0,0,W,H);
+ctx.fillStyle='#52794a';ctx.fillRect(0,0,W,H);
+ctx.strokeStyle='#66865b';ctx.lineWidth=1;
+for(let x=0;x<W;x+=48){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+for(let y=0;y<H;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+for(let i=0;i<9;i++){
+let x=(i*137+50)%W,y=(i*91+35)%H;
+ctx.fillStyle='#315b36';ctx.beginPath();ctx.arc(x,y,15,0,Math.PI*2);ctx.fill();
+}
+enemies.forEach(e=>{
+ctx.fillStyle='#bd3b32';ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fill();
+ctx.fillStyle='white';ctx.fillRect(e.x-10,e.y-19,20,3);
+ctx.fillStyle='#f2c14e';ctx.fillRect(e.x-10,e.y-19,20*(e.hp/2),3);
+});
+bullets.forEach(b=>{
+ctx.fillStyle='#ffd166';ctx.beginPath();ctx.arc(b.x,b.y,4,0,Math.PI*2);ctx.fill();
+});
+ctx.save();ctx.translate(player.x,player.y);ctx.rotate(player.angle);
+ctx.fillStyle='#233e58';ctx.fillRect(-11,-10,23,20);
+ctx.fillStyle='#d9e5ec';ctx.fillRect(2,-3,22,6);
+ctx.fillStyle='#e8b18a';ctx.beginPath();ctx.arc(0,0,8,0,Math.PI*2);ctx.fill();
+ctx.restore();
+ctx.fillStyle='#fff';ctx.font='12px Arial';
+ctx.fillText('VILLAGE TRAINING GROUND',12,H-14);
+}
+})();
+</script>
+</body>
+</html>
